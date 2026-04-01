@@ -212,4 +212,55 @@ export function registerIssueCommands(program: Command): void {
         handleError(err);
       }
     });
+
+  issue
+    .command('comments <number>')
+    .description('List comments on an issue')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--page <n>', 'Page number', '1')
+    .option('--per-page <n>', 'Results per page', '20')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; page?: string; perPage?: string; json?: boolean }) => {
+      const token = getToken();
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const comments = await apiRequest<Array<{
+          id: number;
+          body: string;
+          user?: { login: string };
+          created_at: string;
+          updated_at: string;
+        }>>(`/repos/${owner}/${repo}/issues/${number}/comments`, {
+          token,
+          params: {
+            page: opts.page || 1,
+            per_page: opts.perPage || 20,
+          },
+        });
+
+        if (opts.json) {
+          console.log(JSON.stringify(comments, null, 2));
+          return;
+        }
+
+        if (!comments.length) {
+          console.log('No comments found.');
+          return;
+        }
+
+        console.log(`Comments on issue #${number} in ${repoName}:\n`);
+        for (const c of comments) {
+          console.log(`  ── ${c.user?.login || 'unknown'} · ${formatDate(c.created_at)} (id: ${c.id})`);
+          const lines = c.body.split('\n');
+          for (const line of lines) {
+            console.log(`     ${line}`);
+          }
+          console.log('');
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
 }

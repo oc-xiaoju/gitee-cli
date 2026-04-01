@@ -230,4 +230,316 @@ export function registerPrCommands(program: Command): void {
         handleError(err);
       }
     });
+
+  pr
+    .command('comment <number>')
+    .description('Add a comment to a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .requiredOption('--body <comment>', 'Comment body')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; body: string; json?: boolean }) => {
+      const token = getToken();
+      if (!token) {
+        console.error('Error: Authentication required. Run `gitee auth login` or set GITEE_TOKEN.');
+        process.exit(1);
+      }
+
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const comment = await apiRequest<{ id: number; body: string; user?: { login: string }; created_at: string }>(
+          `/repos/${owner}/${repo}/pulls/${number}/comments`,
+          {
+            method: 'POST',
+            token,
+            body: { body: opts.body },
+          }
+        );
+
+        if (opts.json) {
+          console.log(JSON.stringify(comment, null, 2));
+          return;
+        }
+
+        console.log(`✓ Comment added (id: ${comment.id})`);
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  pr
+    .command('comments <number>')
+    .description('List comments on a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--page <n>', 'Page number', '1')
+    .option('--per-page <n>', 'Results per page', '20')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; page?: string; perPage?: string; json?: boolean }) => {
+      const token = getToken();
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const comments = await apiRequest<Array<{
+          id: number;
+          body: string;
+          user?: { login: string };
+          created_at: string;
+          updated_at: string;
+          path?: string;
+          position?: number;
+        }>>(`/repos/${owner}/${repo}/pulls/${number}/comments`, {
+          token,
+          params: {
+            page: opts.page || 1,
+            per_page: opts.perPage || 20,
+          },
+        });
+
+        if (opts.json) {
+          console.log(JSON.stringify(comments, null, 2));
+          return;
+        }
+
+        if (!comments.length) {
+          console.log('No comments found.');
+          return;
+        }
+
+        console.log(`Comments on PR #${number} in ${repoName}:\n`);
+        for (const c of comments) {
+          const location = c.path ? ` · ${c.path}${c.position !== undefined ? `:${c.position}` : ''}` : '';
+          console.log(`  ── ${c.user?.login || 'unknown'} · ${formatDate(c.created_at)}${location} (id: ${c.id})`);
+          const lines = c.body.split('\n');
+          for (const line of lines) {
+            console.log(`     ${line}`);
+          }
+          console.log('');
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  pr
+    .command('files <number>')
+    .description('List files changed in a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; json?: boolean }) => {
+      const token = getToken();
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const files = await apiRequest<Array<{
+          sha: string;
+          filename: string;
+          status: string | null;
+          additions: string | number;
+          deletions: string | number;
+          patch?: { new_file?: boolean; deleted_file?: boolean; renamed_file?: boolean };
+        }>>(`/repos/${owner}/${repo}/pulls/${number}/files`, { token });
+
+        if (opts.json) {
+          console.log(JSON.stringify(files, null, 2));
+          return;
+        }
+
+        if (!files.length) {
+          console.log('No files changed.');
+          return;
+        }
+
+        console.log(`Files changed in PR #${number} (${repoName}):\n`);
+        for (const f of files) {
+          // Determine change type
+          let changeType = f.status || 'modified';
+          if (f.patch?.new_file) changeType = 'added';
+          else if (f.patch?.deleted_file) changeType = 'deleted';
+          else if (f.patch?.renamed_file) changeType = 'renamed';
+
+          const additions = Number(f.additions) || 0;
+          const deletions = Number(f.deletions) || 0;
+
+          const typeLabel = {
+            added: '\x1b[32mA\x1b[0m',
+            deleted: '\x1b[31mD\x1b[0m',
+            renamed: '\x1b[33mR\x1b[0m',
+            modified: '\x1b[36mM\x1b[0m',
+          }[changeType] ?? '\x1b[36mM\x1b[0m';
+
+          const stats = `\x1b[32m+${additions}\x1b[0m \x1b[31m-${deletions}\x1b[0m`;
+          console.log(`  ${typeLabel} ${f.filename}  ${stats}`);
+        }
+        console.log(`\n  ${files.length} file(s) changed`);
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  pr
+    .command('diff <number>')
+    .description('Show the diff of a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--json', 'Output raw JSON (patch content per file)')
+    .action(async (number: string, opts: { repo?: string; json?: boolean }) => {
+      const token = getToken();
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const files = await apiRequest<Array<{
+          filename: string;
+          status: string | null;
+          additions: string | number;
+          deletions: string | number;
+          patch?: { diff?: string; new_file?: boolean; deleted_file?: boolean };
+        }>>(`/repos/${owner}/${repo}/pulls/${number}/files`, { token });
+
+        if (opts.json) {
+          console.log(JSON.stringify(files, null, 2));
+          return;
+        }
+
+        if (!files.length) {
+          console.log('No diff found.');
+          return;
+        }
+
+        for (const f of files) {
+          // File header
+          console.log(`\x1b[1m\x1b[34mdiff -- ${f.filename}\x1b[0m`);
+          if (!f.patch?.diff) {
+            console.log('  (no diff available)');
+            console.log('');
+            continue;
+          }
+          // Colorize diff lines
+          const lines = f.patch.diff.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('@@')) {
+              console.log(`\x1b[36m${line}\x1b[0m`);
+            } else if (line.startsWith('+')) {
+              console.log(`\x1b[32m${line}\x1b[0m`);
+            } else if (line.startsWith('-')) {
+              console.log(`\x1b[31m${line}\x1b[0m`);
+            } else {
+              console.log(line);
+            }
+          }
+          console.log('');
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  pr
+    .command('review <number>')
+    .description('Submit a review for a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .requiredOption('--action <action>', 'Review action: approve | request_changes | comment')
+    .option('--body <comment>', 'Review comment body')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; action: string; body?: string; json?: boolean }) => {
+      const token = getToken();
+      if (!token) {
+        console.error('Error: Authentication required. Run `gitee auth login` or set GITEE_TOKEN.');
+        process.exit(1);
+      }
+
+      const validActions = ['approve', 'request_changes', 'comment'];
+      if (!validActions.includes(opts.action)) {
+        console.error(`Error: --action must be one of: ${validActions.join(', ')}`);
+        process.exit(1);
+      }
+
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        const result = await apiRequest<Record<string, unknown>>(
+          `/repos/${owner}/${repo}/pulls/${number}/review`,
+          {
+            method: 'POST',
+            token,
+            body: {
+              action: opts.action,
+              body: opts.body || '',
+            },
+          }
+        );
+
+        if (opts.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        const actionLabel: Record<string, string> = {
+          approve: '✓ Approved',
+          request_changes: '✗ Requested changes',
+          comment: '💬 Review comment submitted',
+        };
+        console.log(`${actionLabel[opts.action] ?? '✓ Review submitted'} on PR #${number}`);
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  pr
+    .command('review-comments <number>')
+    .description('List review comments on a pull request')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--page <n>', 'Page number', '1')
+    .option('--per-page <n>', 'Results per page', '20')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: { repo?: string; page?: string; perPage?: string; json?: boolean }) => {
+      const token = getToken();
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      try {
+        // Gitee uses the same comments endpoint for inline review comments
+        const comments = await apiRequest<Array<{
+          id: number;
+          body: string;
+          user?: { login: string };
+          created_at: string;
+          path?: string;
+          position?: number;
+          commit_id?: string;
+        }>>(`/repos/${owner}/${repo}/pulls/${number}/comments`, {
+          token,
+          params: {
+            page: opts.page || 1,
+            per_page: opts.perPage || 20,
+          },
+        });
+
+        if (opts.json) {
+          console.log(JSON.stringify(comments, null, 2));
+          return;
+        }
+
+        if (!comments.length) {
+          console.log('No review comments found.');
+          return;
+        }
+
+        console.log(`Review comments on PR #${number} (${repoName}):\n`);
+        for (const c of comments) {
+          const fileInfo = c.path ? `\x1b[33m${c.path}${c.position !== undefined ? `:${c.position}` : ''}\x1b[0m · ` : '';
+          console.log(`  ── ${fileInfo}${c.user?.login || 'unknown'} · ${formatDate(c.created_at)} (id: ${c.id})`);
+          const lines = c.body.split('\n');
+          for (const line of lines) {
+            console.log(`     ${line}`);
+          }
+          console.log('');
+        }
+      } catch (err) {
+        handleError(err);
+      }
+    });
 }

@@ -85,7 +85,8 @@ gitee issue create --title "Bug fix"        # 创建 issue
 gitee issue create --title "..." --body "..." --repo <owner/repo>
 gitee issue view <number>                   # 查看 issue 详情
 gitee issue close <number>                  # 关闭 issue
-gitee issue comment <number> --body "..."   # 评论
+gitee issue comment <number> --body "..."   # 添加评论
+gitee issue comments <number>               # 列出所有评论
 ```
 
 ### Pull Request
@@ -99,6 +100,18 @@ gitee pr view <number>                      # 查看 PR 详情
 gitee pr merge <number>                     # 合并 PR
 gitee pr merge <number> --method squash     # Squash 合并
 gitee pr close <number>                     # 关闭 PR
+
+# 评论
+gitee pr comment <number> --body "LGTM"     # 添加 PR 评论
+gitee pr comments <number>                  # 列出 PR 所有评论
+
+# Code Review
+gitee pr files <number>                     # 列出 PR 变更文件（含增删行数）
+gitee pr diff <number>                      # 查看 PR diff（+ 绿色 / - 红色）
+gitee pr review <number> --action approve              # 批准 PR
+gitee pr review <number> --action request_changes      # 请求修改
+gitee pr review <number> --action comment --body "..." # 提交 review 评论
+gitee pr review-comments <number>           # 列出 PR 的 review 评论
 ```
 
 ### Release
