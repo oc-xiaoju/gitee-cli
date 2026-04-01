@@ -86,10 +86,12 @@ export function registerIssueCommands(program: Command): void {
       const [owner, repo] = repoName.split('/');
 
       try {
-        const created = await apiRequest<GiteeIssue>(`/repos/${owner}/${repo}/issues`, {
+        // Gitee API: POST /repos/{owner}/issues (repo is a body param, NOT in path)
+        const created = await apiRequest<GiteeIssue>(`/repos/${owner}/issues`, {
           method: 'POST',
           token,
           body: {
+            repo,
             title: opts.title,
             body: opts.body || '',
             assignee: opts.assignee,
@@ -119,7 +121,8 @@ export function registerIssueCommands(program: Command): void {
       const [owner, repo] = repoName.split('/');
 
       try {
-        const iss = await apiRequest<GiteeIssue>(`/repos/${owner}/${repo}/issues/${number}`, { token });
+        // Gitee API: GET /repos/{owner}/issues/{number} (repo is NOT in path)
+        const iss = await apiRequest<GiteeIssue>(`/repos/${owner}/issues/${number}`, { token });
 
         if (opts.json) {
           console.log(JSON.stringify(iss, null, 2));
@@ -159,7 +162,8 @@ export function registerIssueCommands(program: Command): void {
       const [owner, repo] = repoName.split('/');
 
       try {
-        const updated = await apiRequest<GiteeIssue>(`/repos/${owner}/${repo}/issues/${number}`, {
+        // Gitee API: PATCH /repos/{owner}/issues/{number} (repo is NOT in path)
+        const updated = await apiRequest<GiteeIssue>(`/repos/${owner}/issues/${number}`, {
           method: 'PATCH',
           token,
           body: { state: 'closed', repo },

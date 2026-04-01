@@ -16,11 +16,13 @@ export function registerApiCommand(program: Command): void {
     }, [] as string[])
     .option('--no-auth', 'Skip authentication token')
     .option('--paginate', 'Fetch all pages and combine results')
+    .option('--json', 'Output compact JSON (default is pretty-printed)')
     .action(async (method: string, path: string, opts: {
       field: string[];
       query: string[];
       auth: boolean;
       paginate?: boolean;
+      json?: boolean;
     }) => {
       const token = opts.auth !== false ? getToken() : undefined;
 
@@ -83,14 +85,14 @@ export function registerApiCommand(program: Command): void {
               if (result.length < 100) break;
               page++;
             } else {
-              console.log(JSON.stringify(result, null, 2));
+              console.log(opts.json ? JSON.stringify(result) : JSON.stringify(result, null, 2));
               return;
             }
           }
-          console.log(JSON.stringify(allResults, null, 2));
+          console.log(opts.json ? JSON.stringify(allResults) : JSON.stringify(allResults, null, 2));
         } else {
           const result = await apiRequest<unknown>(apiPath, requestOpts);
-          console.log(JSON.stringify(result, null, 2));
+          console.log(opts.json ? JSON.stringify(result) : JSON.stringify(result, null, 2));
         }
       } catch (err) {
         handleError(err);
