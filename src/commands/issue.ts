@@ -147,6 +147,70 @@ export function registerIssueCommands(program: Command): void {
     });
 
   issue
+    .command('update <number>')
+    .description('Update an issue (title, body, assignee, state, labels)')
+    .option('--repo <owner/repo>', 'Repository (owner/repo)')
+    .option('--title <title>', 'New title')
+    .option('--body <body>', 'New body/description')
+    .option('--assignee <username>', 'Reassign to user')
+    .option('--state <state>', 'State: open|closed|progressing|rejected')
+    .option('--labels <labels>', 'Comma-separated label names')
+    .option('--enterprise <enterprise>', 'Enterprise name (use enterprise API endpoint)')
+    .option('--json', 'Output raw JSON')
+    .action(async (number: string, opts: {
+      repo?: string; title?: string; body?: string; assignee?: string;
+      state?: string; labels?: string; enterprise?: string; json?: boolean;
+    }) => {
+      const token = getToken();
+      if (!token) {
+        console.error('Error: Authentication required. Run `gitee auth login` or set GITEE_TOKEN.');
+        process.exit(1);
+      }
+
+      // Must have at least one field to update
+      if (!opts.title && !opts.body && !opts.assignee && !opts.state && !opts.labels) {
+        console.error('Error: Provide at least one field to update (--title, --body, --assignee, --state, --labels).');
+        process.exit(1);
+      }
+
+      const repoName = resolveRepo(opts.repo);
+      const [owner, repo] = repoName.split('/');
+
+      // Build update payload
+      const payload: Record<string, unknown> = { repo };
+      if (opts.title) payload.title = opts.title;
+      if (opts.body) payload.body = opts.body;
+      if (opts.assignee) payload.assignee = opts.assignee;
+      if (opts.state) payload.state = opts.state;
+      if (opts.labels) payload.labels = opts.labels;
+
+      try {
+        // Enterprise vs personal API endpoint
+        const endpoint = opts.enterprise
+          ? `/enterprises/${opts.enterprise}/issues/${number}`
+          : `/repos/${owner}/issues/${number}`;
+
+        const updated = await apiRequest<GiteeIssue>(endpoint, {
+          method: 'PATCH',
+          token,
+          body: payload,
+        });
+
+        if (opts.json) {
+          console.log(JSON.stringify(updated, null, 2));
+          return;
+        }
+
+        console.log(`✓ Updated issue #${number}: ${updated.title}`);
+        if (opts.state) console.log(`  State: ${updated.state}`);
+        if (opts.assignee) console.log(`  Assignee: ${updated.assignee?.login || opts.assignee}`);
+        console.log(`  URL: ${updated.html_url}`);
+      } catch (err) {
+        handleError(err);
+      }
+    });
+
+  issue
     .command('close <number>')
     .description('Close an issue')
     .option('--repo <owner/repo>', 'Repository (owner/repo)')
